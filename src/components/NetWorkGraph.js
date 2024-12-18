@@ -1,14 +1,25 @@
 // src/NetworkGraph.js
 import React, { useRef, useEffect, useState } from 'react';
 import * as d3 from 'd3';
+import { dijkstra } from '../algorithm/dijkstra';
 
 const NetworkGraph = () => {
   const svgRef = useRef();
+
+  // constants for creating graph
   const [numNodes, setNumNodes] = useState(1); 
   const [links, setLinks] = useState([]); 
   const [newStart, setNewStart] = useState("");
   const [newEnd, setNewEnd] = useState("");
   const [newWeight, setNewWeight] = useState(0); 
+
+  // constants for visualization 
+  const [visited, setVisited] = useState([]); 
+  const [path, setPath] = useState([]); 
+  const [current, setCurrent] = useState(null); 
+  const [dijkstraStart, setDijkstraStart] = useState("A"); 
+  const [dijkstraEnd, setDijkstraEnd] = useState("A")
+  const [running, setRunning] = useState(false); 
 
   // console.log(numNodes); 
   const handleNumNodeChange = (event) => {
@@ -29,18 +40,18 @@ const NetworkGraph = () => {
   }
 
   const handleLinksChange = (event) => {
-    console.log("adding link between...")
-    console.log(newStart)
-    console.log(newEnd)
+    // console.log("adding link between...")
+    // console.log(newStart)
+    // console.log(newEnd)
     if (newStart !== "Select a node" && newEnd !== "Select a node") {
         addNewLink(newStart, newEnd); 
     }
   }
 
   const addNewLink = (startNode, endNode) => {
-    console.log("adding new link...")
-    console.log(startNode)
-    console.log(endNode)
+    // console.log("adding new link...")
+    // console.log(startNode)
+    // console.log(endNode)
     const updatedLinks = [...links, { source: startNode, target: endNode, weight: newWeight }];
     setLinks(updatedLinks); 
   }
@@ -53,9 +64,45 @@ const NetworkGraph = () => {
     setNewWeight(event.target.value); 
   }
 
+  const handleDijkstraStart = (event) => {
+    setDijkstraStart(event.target.value);
+  }
+
+  const handleDijkstraEnd = (event) => {
+    setDijkstraEnd(event.target.value); 
+  }
+
+  const handleDijkstra = async (event) => {
+    setRunning(true); 
+    const path = await dijkstra(links, dijkstraStart, dijkstraEnd, (updatedVisited, updatedCurrent) => {
+        setVisited(updatedVisited);
+        setCurrent(updatedCurrent); 
+    }); 
+    console.log("handeling dijkstras...")
+    // console.log(path)
+    const pathLinks = [];
+    for (const link of path.steps) {
+        pathLinks.push({start: link.source, end: link.target}); 
+    }
+    // console.log("pathsLinks..."); 
+    // console.log(pathLinks);
+    setPath(pathLinks); 
+  }
+
+  const handleReset = () => {
+    setRunning(false); 
+    setVisited([]);
+    setPath([]);
+    setCurrent(null); 
+  }
+
   useEffect(() => {
-    console.log("current links...")
-    console.log(links)
+    // console.log("current links...")
+    // console.log(links)
+    console.log("network graph visited...")
+    console.log(visited)
+    console.log("network graph current...")
+    console.log(current)
     const width = 600;
     const height = 400;
 
@@ -67,7 +114,6 @@ const NetworkGraph = () => {
         }
     }
     
-
     // const links = []; 
     
     // if (numNodes <= 26) {
@@ -122,9 +168,26 @@ const NetworkGraph = () => {
       .enter()
       .append('line')
       .attr('class', 'link')
-      .attr('stroke', 'black')
-      .attr('stroke-width', 1) // instead of just 1
+      // .attr('stroke', (d) => matches(path, d) ? 'green' : 'black') // check current path
+      .attr('stroke-width', 1) 
       .attr('marker-end', 'url(#arrow)');
+
+    // linkSelection.attr('fill', (d) => {
+    //     if (matches(path, d)) return 'green';
+    //     return 'black'; 
+    // })
+
+    // function matches(path, link) {
+    //     // console.log('matches...')
+    //     // console.log(link)
+    //     for (const step of path) {
+    //         // console.log(step)
+    //         if (step.start === link.source.id && step.end === link.target.id) {
+    //             return true; 
+    //         }
+    //     }
+    //     return false; 
+    // }
 
     const nodeSelection = svg
       .selectAll('circle')
@@ -132,7 +195,8 @@ const NetworkGraph = () => {
       .enter()
       .append('circle')
       .attr('r', 10)
-      .attr('fill', 'steelblue')
+      // .attr('fill', (d) => visited.includes(d.id) ? 'orange' : 'steelblue')
+      // .attr('stroke', (d) => path.includes(d.id) ? 'green' : 'none')
       .call(
         d3
           .drag()
@@ -140,6 +204,13 @@ const NetworkGraph = () => {
           .on('drag', drag)
           .on('end', dragEnd)
       );
+
+    //   nodeSelection.attr('fill', (d) => {
+    //     if (d.id === current) return 'red'; 
+    //     if (path.includes(d.id)) return 'green';  // Shortest path nodes
+    //     if (visited.includes(d.id)) return 'orange';  // Visited nodes
+    //     return 'steelblue';  // Default
+    //   });
 
       const labelSelection = svg
       .selectAll('text')
@@ -182,26 +253,65 @@ const NetworkGraph = () => {
     }
 
     function dragStart(event, d) {
-        console.log('drag start');
+        // console.log('drag start');
       simulation.alphaTarget(0.5).restart();
       d.fx = d.x;
       d.fy = d.y;
     }
 
     function drag(event, d) {
-        console.log('dragging');
+        // console.log('dragging');
       d.fx = event.x;
       d.fy = event.y;
     }
 
     function dragEnd(event, d) {
-        console.log('drag end');
+        // console.log('drag end');
       simulation.alphaTarget(0.1);
       d.fx = null;
       d.fy = null;
     }
     
   }, [numNodes, links]);
+
+  useEffect(() => {
+    // Update node and link colors only when visited, path, or current changes
+    const svg = d3.select(svgRef.current);
+
+    svg
+    .selectAll('circle')
+    .attr('fill', d =>
+      d.id === current
+        ? 'red'
+        : visited.includes(d.id)
+        ? 'orange'
+        : 'steelblue'
+    );
+
+  svg
+    .selectAll('.link')
+    .attr('stroke', d =>
+      matches(path, d)
+        ? 'green'
+        : 'black'
+    )
+    .attr('stroke-width', d =>
+    matches(path, d)
+      ? 2
+      : 1);
+
+     function matches(path, link) {
+        // console.log('matches...')
+        // console.log(link)
+        for (const step of path) {
+            // console.log(step)
+            if (step.start === link.source.id && step.end === link.target.id) {
+                return true; 
+            }
+        }
+        return false; 
+    }
+  }, [numNodes, links, visited, path, current]); 
 
  
 const elements = []; 
@@ -217,12 +327,14 @@ if (numNodes <= 26) {
     <div>
         <div><span>Select number of nodes: </span><input type = "number" value = {numNodes} onChange={handleNumNodeChange} max="26" 
   min="1"></input></div>
-        <div>
-            <span>Add start of new edge: </span><select value = {newStart} onChange={handleStartChange}>{elements}</select>
-        </div>
+        <div><span>Add start of new edge: </span><select value = {newStart} onChange={handleStartChange}>{elements}</select></div>
         <div><span>Add end of new edge: </span><select value = {newEnd} onChange={handleEndChange}>{elements}</select></div>
         <div><span>Add weight of new edge: </span><input type = "number" value = {newWeight} onChange={handleNewWeight}></input></div>
         <div><button onClick = {handleLinksChange}> Add New Edge </button> <button onClick = {handleClearEdges}>Clear Edges</button></div>
+        <div><span>Add start node: </span><select value = {dijkstraStart} onChange={handleDijkstraStart}>{elements}</select></div>
+        <div><span>Add end node: </span><select value = {dijkstraEnd} onChange={handleDijkstraEnd}>{elements}</select></div>
+        <div><button onClick = {handleDijkstra}> Run Dijkstra's </button><button onClick = {handleReset}>Reset</button></div>
+        
         <div>
             <svg ref={svgRef}></svg>
         </div>
